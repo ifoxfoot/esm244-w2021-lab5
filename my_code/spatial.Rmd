@@ -1,0 +1,102 @@
+---
+title: "Spatial"
+author: "Iris Foxfoot"
+date: "2/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tsibble)
+library(feasts)
+library(fable)
+library(here)
+library(sf)
+library(tmap)
+```
+#Read in the data using read_sf
+```{r}
+ca_counties <- read_sf(here("data", "ca_counties", "CA_Counties_TIGER2016.shp"))
+```
+#wranglins
+```{r}
+ca_subset <- ca_counties %>% 
+  select(NAME, ALAND) %>% 
+  rename(county_name = NAME, land_area = ALAND)
+#check the crs
+ca_subset %>% 
+  st_crs()
+
+#look at it
+ggplot(data = ca_subset) + 
+  geom_sf(aes(fill = land_area), color = "white", size = 0.1) + theme_void() +
+  scale_fill_gradientn(colors = c("cyan", "blue", "purple"))
+```
+#invasive plants
+```{r}
+#read in the data
+sesbania <- read_sf(here("data", "red_sesbania", "ds80.shp")) 
+
+#check the crs
+sesbania %>% st_crs()
+```
+
+#transform crs
+```{r}
+sesbania <- st_transform(sesbania, 3857)
+
+#check again
+sesbania %>% st_crs()
+```
+
+#plot together
+```{r}
+ggplot() + 
+  geom_sf(data = ca_subset) +
+  geom_sf(data = sesbania, size = 1, color = "red")
+```
+#do a join
+```{r}
+ca_sesbania <- ca_subset %>% 
+  st_join(sesbania)
+
+#find counts
+sesbania_counts <- ca_sesbania %>% 
+  count(county_name)
+
+#plot chloropleth
+ggplot(data = sesbania_counts) +
+  geom_sf(aes(fill = n), color = "white", size = 0.1) +
+  scale_fill_gradientn(colors = c("lightgray", "orange", "red"))+
+  theme_minimal() +
+  labs(fill = "number of S. punicea records")
+```
+#more fancy wrangling
+```{r}
+#subset of sesbania point locations only in solano county
+solano_sesbania <- sesbania %>% 
+  filter(COUNTY == "Solano")
+
+#Only keep solan polygon from california county data
+solano <- ca_subset %>% 
+  filter(county_name == "Solano")
+
+#plot it
+ggplot() +
+  geom_sf(data = solano) +
+  geom_sf(data = solano_sesbania)
+```
+
+#Make an interactive map
+```{r}
+#set the viewing mode to "interactive"
+tmap_mode(mode = "view")
+
+#then make a map with the polygon fill color updated by variable 'land_area', updating the color palette to "BuGn", then add another shape layer for the sesbania recodes added as dots
+tm_shape(ca_subset) +
+  tm_fill("land_area", palette = "BuGn") +
+  tm_shape(sesbania) +
+  tm_dots()
+```
+

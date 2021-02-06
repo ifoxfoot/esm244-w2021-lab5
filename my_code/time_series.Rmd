@@ -1,0 +1,118 @@
+---
+title: "time series and spatial data"
+author: "Iris Foxfoot"
+date: "2/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tsibble)
+library(feasts)
+library(fable)
+library(here)
+```
+#Read in data
+```{r}
+energy <- read_csv(here("data", "energy.csv"))
+```
+#view it, then fix dates
+```{r}
+energy_ts <- energy %>% 
+  mutate(date = tsibble::yearmonth(month)) %>%
+  as_tsibble(key = NULL, index = date)
+```
+#view it in graphs
+```{r}
+ggplot(data = energy_ts, aes(x= date, y = res_total)) +
+  geom_line() +
+  labs(y = "Residential energy consumption \n (Trillion BTU")
+```
+#seasonality 
+```{r}
+energy_ts %>% 
+  gg_season(y = res_total) + 
+  theme_minimal() +
+  labs(x = "month",
+       y = "residential energy consumption (trillion BTU")
+```
+# subseries plot
+```{r}
+energy_ts %>% gg_subseries(res_total)
+```
+#Decomposition By seasonal and trend decomposition using loess (STl)
+```{r}
+#find the STL decomp
+dcmp <- energy_ts %>% 
+  model(STL(res_total ~ season()))
+#view it
+#visualize it
+components(dcmp) %>% autoplot() + 
+  theme_minimal()
+```
+#Autocorrelation function (ACF)
+```{r}
+energy_ts %>% 
+  ACF(res_total) %>% 
+  autoplot()
+```
+#Holt-Winters exponential smoothing
+```{r}
+#Create the model
+energy_fit <- energy_ts %>% 
+  model(
+    ets = ETS(res_total ~ season("M"))
+  )
+
+#Forecast using the model 10 years into the future:
+energy_forecast <- energy_fit %>% 
+  forecast(h = "10 years")
+
+#plot just the forecasted values (with 80 and 95% confidence intervals):
+energy_forecast %>% 
+  autoplot()
+
+#plot it added to the original data:
+energy_forecast %>% 
+  autoplot(energy_ts)
+```
+# assessing the residuals
+```{r}
+#use broom::augment to get the predicted values and residuals
+energy_predicted <- broom::augment(energy_fit)
+
+#after viewing it, plot actual energy values (res_total, and the predicted values)
+ggplot(data = energy_predicted) +
+  geom_line(aes(x = date, y = res_total)) +
+  geom_line(aes(x = date, y = .fitted), color = "red")
+```
+#now explore residuals
+```{r}
+#vew in histogran
+ggplot(data = energy_predicted, aes(x = .resid)) +
+  geom_histogram()
+```
+#other forecasting methods
+```{r}
+#fit 3 different forecasting models (ETS, ARIMA, SNAIVE)
+energy_fit_multi <- energy_ts %>% 
+  model(
+    ets = ETS(res_total ~ season("M")),
+    arima = ARIMA(res_total),
+    snaive = SNAIVE(res_total)
+  )
+
+#forecast 3 years into the future (from data end date)
+multi_forecast <- energy_fit_multi %>% 
+  forecast(h = "3 years")
+
+#Plot
+multi_forecast %>% 
+  autoplot(energy_ts)
+
+#or just view the forecasts(note the similarity)
+multi_forecast %>% 
+  autoplot()
+```
+
